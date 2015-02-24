@@ -2,15 +2,45 @@
 format: Markdown
 ...
 
-# Welcome to Gitit!
+# Welcome to ``etrace``
 
-This is the front page of your new gitit wiki.  You can edit this
-page by clicking on the "edit" tab at the top of the screen.
-For instructions on how to make a link to another wiki page, see [the
-Help page](Help#wiki-links). To create a new wiki page, just create a
-link to it and follow the link.
+``etrace`` is a Linux user-space daemon companion to ftrace that: 
 
-Help is always available through the "Help" link in the sidebar.
-More details on installing and configurating gitit are available
-in the [Gitit User’s Guide]().
+* Sets up ftrace events
+* Filters (of what you don't want)
+    * for certain processes and their threads
+* Operates for a certain amount of time, then empties the catch (ftrace buffer) and writes it to file.
 
+It should work on most Linux-system, but was primarily developed for Android-Linux as Android-Linux has different view on tracing than many other communities and use event-tracing exclusively (i.e. ftrace is active but the only available tracer is **nop**).
+
+# Build
+
+``etrace`` build-system is based on CMake, with all it's blessings and flaws. 
+
+* For a local build (recommended method):
+```bash
+mkdir BUILD_local
+cd BUILD_local
+cmake ../
+ccmake .         #Adjust settings. Optional
+make -j$(cat /proc/cpuinfo | grep processor | wc -l)
+```
+*The name of the build-directory is not important, just make sure it differs from other buld-directories if you have more than one builds, which for this project you'd typically have.*
+
+
+For cross-compiling you need so called *tool-chain* files. In this project there is one such available ``Android.cmake``, but normally these are external components.
+
+``Android.cmake`` is generic and can be used for any ARM-based Linux system. Actually any Linux-system if you also tweak the ``TRIPLET_PREFIX`` in the file. What you need to take special note about is the ``CMAKE_SYSROOT`` variable. This expands to ``SYSROOT`` and need to correspond to where your systems headers and library-files are stored on your build-host. For the simple case the X-tools have a default. But or Android, this is the part of the NDK and must defined explicitly. It usually looks something like the following:
+
+```
+$SOME_NDK_PATH/platforms/android-NN/arch-arm
+```
+
+* For an Android build (recommended method):
+```bash
+mkdir BUILD_android
+cd BUILD_android
+cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/Android.cmake  ../
+ccmake .         #Adjust settings. Optional but do verify SYSROOT
+make -j$(cat /proc/cpuinfo | grep processor | wc -l)
+```
