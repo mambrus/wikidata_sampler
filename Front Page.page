@@ -2,20 +2,36 @@
 format: Markdown
 ...
 
-# Welcome to ``etrace``
+# Welcome to ``SAMPLER``
 
-``etrace`` is a Linux user-space daemon companion to ftrace that: 
+``SAMPLER``:s primary purpose is to gather system-data from a target,
+usually representing some kind of performance indicators found in the
+file-system. It consists of parts in a three tier fashion:
 
-* Sets up ftrace events
-* Filters (of what you don't want)
-    * for certain processes and their threads
-* Operates for a certain amount of time, then empties the catch (ftrace buffer) and writes it to file.
+* ``SAMPLER``: Linux user-space daemon used to gather data in vectors
+  which are time-stamped. Gathering can be either periodic, event-driven or a
+  combination of the above.
 
-It should work on most Linux-system, but was primarily developed for Android-Linux as Android-Linux has different view on tracing than many other communities and use event-tracing exclusively (i.e. ftrace is active but the only available tracer is **nop**).
+* ``SAMPLER-editor``: A Python based UI-program to:
+    * Create definition files to the ``SAMPLER`` daemon
+	* Write post-expressions enabling the totality of ``SAMPLER`` to
+	  represent very complex functions
+
+* ``SAMPLER-plot``: A Python based program to:
+	* Run the backend-program ``feed-gnuplot`` by adding options and by
+	  adjusting data-format where such is needed.
+	* Use the post-expressions defined by ``SAMPLER-editor``
+
+All code is transparent and portable to the extent that porting should not
+be needed. Running the daemon probably makes little sense on a non
+POSIX-based target. The daemon is verified to run on:
+
+* Linux desktops
+* Android systems
 
 # Build
 
-``etrace`` build-system is based on CMake, with all it's blessings and flaws. 
+``SAMPLER`` build-system is based on CMake, with all it's blessings and flaws. 
 
 * For a local build (recommended method):
 ```bash
@@ -25,12 +41,23 @@ cmake ../
 ccmake .         #Adjust settings. Optional
 make -j$(cat /proc/cpuinfo | grep processor | wc -l)
 ```
-*The name of the build-directory is not important, just make sure it differs from other buld-directories if you have more than one builds, which for this project you'd typically have.*
+*The name of the build-directory is not important, just make sure it differs
+from other build-directories if you have more than one builds, which for
+this project you'd typically have.*
 
 
-For cross-compiling you need so called *tool-chain* files. In this project there is one such available ``Android.cmake``, but normally these are external components.
+For cross-compiling you need so called *tool-chain* files. In this project
+there is one such available ``Android.cmake``, but normally these are
+external components.
 
-``Android.cmake`` is generic and can be used for any ARM-based Linux system. Actually any Linux-system if you also tweak the ``TRIPLET_PREFIX`` in the file. What you need to take special note about is the ``CMAKE_SYSROOT`` variable. This expands to ``SYSROOT`` and need to correspond to where your systems headers and library-files are stored on your build-host. For the simple case the X-tools have a default. But or Android, this is the part of the NDK and must defined explicitly. It usually looks something like the following:
+``Android.cmake`` is generic and can be used for any ARM-based Linux system.
+Actually any Linux-system if you also tweak the ``TRIPLET_PREFIX`` in the
+file. What you need to take special note about is the ``CMAKE_SYSROOT``
+variable. This expands to ``SYSROOT`` and need to correspond to where your
+systems headers and library-files are stored on your build-host. For the
+simple case the X-tools have a default. But or Android, this is the part of
+the NDK and must defined explicitly. It usually looks something like the
+following:
 
 ```
 $SOME_NDK_PATH/platforms/android-NN/arch-arm
