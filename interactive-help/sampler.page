@@ -1,350 +1,702 @@
-sampler
-=======
+[INTERACTIVE COMMANDS]
 
-Produces periodic samples gathered from files on target system. Typical
-files would be files from sysfs, procfs, devfs but also normal files like
-log-files.
+calibrate
+---------
 
-Samples are either periodical, where period-time is defined in uS by -t flag
-at start-up, or event-driven. Event driven samples are defined by a rule
-describing the trigger (TBD).
+Usage: `calibrate <operation> [options]`
 
-A sample is defined as a series of signals. Each signal is defined by one
-line in a file describing all signals. Output format for each sample is on
-clear-text line where each signal is has it's private column representing
-the same order it was mentioned in the descriptive file, prepended by 3
-special signals: "sample id", "kernel timestamps (i.e. time-stamp since
-start-up) and "sample time" (i.e. time it took to complete a sample). The
-latter is needed to determine jitter due to system load or I/O-wait of any
-data source.
+Perform the specified transceiver calibration operation.
 
-Full format of the output (assuming delimiter is ";") would be:
+Available operations:
 
-{sample id};{kernel time};{sample time};{signal_0};..{signal_n}
+ * LMS internal DC offset auto-calibrations
 
-Field details are described below.
-Sample definition
-==================
+     * `calibrate lms [show]`
+     * `calibrate lms tuning [value]`
+     * `calibrate lms txlpf [<I filter> <Q filter>]`
+     * `calibrate lms rxlpf [<I filter> <Q filter>]`
+     * `calibrate lms rxvga2 [<DC ref> <I1> <Q1> <I2> <Q2>]`
 
-One sample is an entity occurring at a specific moment in time. Quite
-commonly periodical, or driven by some sort of event.
+    Perform the specified auto-calibration, or all of them if none are
+    provided. When values are provided, these are used instead of the
+    results of the auto-calibration procedure. Use `lms show` to read and
+    print the current LMS calibration values.
 
-One sample has the following properties.
+    For `rxvga2`, `I1` and `Q1` are the Stage 1 I and Q components
+    respectively, and `I2` and `Q2` are the Stage 2 I and Q components.
 
-Field description:
-------------------
+ * RX and TX I/Q DC offset correction parameter calibration
 
-1 Period time (uS)
-------------------
-  Time between two samples. 0 or NULL id event-driven
+     * `calibrate dc <rx|tx> [<I> <Q>]`
+     * `calibrate dc <rxtx> dc`
 
-2 Event description (TBD)
--------------------------
-  ***NOTE: This sub-section is not finished. Concept still needs research*** 
-  
-  Some form of description about the event. Could be on each signals update,
-  or a specific signals update. Could be markers in log e.t.a.
+    Calibrate the DC offset correction parameters for the current frequency
+    and gain settings. If a I/Q values are provided, they are applied
+    directly. `cal rxtx` is shorthand for `cal rx` followed by
+    `cal tx`.
 
-3 List of signals
------------------
-  A sample has at least one signal but no upper limit (only practicalities
-  determine the upper limit).
+ * RX and TX I/Q balance correction parameter calibration
 
-Field descriptions
-==================
+     * `calibrate iq <rx|tx> <gain|phase> <value>`
 
-1 Signal name (symbolic)
-------------------------
-  Static name of the signal. To be used in output for legend if field #2
-  isn't given. If neither #1 not #2 is given, signal name will be named
-  Signal_<nr>, where <nr> is the line-number of the sample-description
-  file.
+    Set the specified IQ gain or phase balance parameters.
 
-2 Signal name from file
------------------------
-  Signal name is contained in this file. Name is expected to be the only
-  content of this file. If string is longer than the length of #1, name
-  will be truncated from beginning of text and length characters long.
+ * Generate RX or TX I/Q DC correction parameter tables
 
-3 Data-file name
-----------------
-  Signal data is fetched from this file
+     * `calibrate table dc <rx|tx> [<f_min> <f_max> [f_inc]]`
 
-4 Sampling operation
---------------------
-  An integer value corresponding a bit-field defining data-file mode of
-  operation or other details about how sampling should be done.
+    Generate and write an I/Q correction parameter table to the current
+    working directory, in a file named `<serial>_dc_<rx|tx>.tbl`.
+    `f_min` and `f_max` are min and max frequencies to include in the
+    table. `f_inc` is the frequency increment.
 
-  Note, setting these may also alter the complete sample behaviour from
-  rate-monotonic (default behaviour) to event-driven. Not setting this
-  defaults to a safe but slow rate-monotonic behaviour where each file is
-  constantly opened and closed. Note that some files require not having this
-  set default. For example files that can block would block the whole sample
-  if not marked "can block".
+    By default, tables are generated over the entire frequency range, in
+    2 MHz steps.
 
 
-4.1 Bits
-----------
-    1: OPENCLOSE: File is constantly opened and closed. This is a costly but
-       safe operation (as it will always work). It's also the default file
-       operation mode if #4 is empty. For some files, like log-files that
-       might have been renamed or sysfs files that can dynamically exist
-       and disappear, it's a necessary setting.
+clear
+-----
 
-    2: CANBLOCK: Set this indicates file can block. If file is not at the same time
-       en event driver (see TRIGGER below), file will be inspected if it
-       has something to deliver before read. CANBLOCK implies OPENCLOSE
-       being unset. Typical files in this category would be:
-       * Clear text drivers
-       * /proc/kmsg
-       * Named pipes. This is very useful when you need another process to
-		 help interpret/filter something which sampler has no way of
-		 interpreting itself. For example reading events like this:
-               mkfifo /data/local/tmp/logcat_e.txt;
-               logcat -b events -v threadtime > /data/local/tmp/logcat_e.txt
+Usage: `clear`
 
-    3: TRIGGER: Updates of this file triggers a complete sample. Updates can
-       come in two forms:
+Clears the screen.
 
-       A) Files that CANBLOCK. When new data releases the block for one
-          signal, it will drive the event for the complete sample (i.e. all
-          other signals too).
-       B) Files that are TIMED, I.e. that can't block, but which support
-          st_mtime in `struct stat`. In this case, rate-monotonic has to
-          poll the state, but only if it's modified since last sample, will
-          it drive an event.
 
-       Special notes:
-         Consideration has to be taken into account for signals *not*
-         updated since last sample, when events are driving samples, see
-         field #9.
+echo
+----
 
-         In the physical world, two event's can't occur at exactly the
-         same time. One event always occurs before another even ever so
-         slightly. In the digital world, due to time-resolution and
-         other practical limitations, they can. If more than one TRIGGER
-         can drive an event, #9 allows output of the other, there will be
-         no possibility to distinguish which is cause and which is
-         effect. Even if #9 doesn't allow output for non-updated signals
-         (assuming updates can be determined), two TRIGGERs can still
-         both contain data, in which case it's a limitation of the kernel
-         and scheduler. Ideally, If TRIGGER is set, each sample will
-         contain only one field with data, the rest would be empty. This
-         is a case that will rarely happen, especially as samples will
-         commonly contain files from sysfs, there st_mtime isn't
-         supported.
+Usage: `echo [arg 1] [arg 2] ... [arg n]`
 
-         There might be other types of events concurrently driving samples
-         not specified by signal descriptions. For example strace, ftrace
-         waitid (possibly filtered) events.
+Echo each argument on a new line.
 
-    4: TIMED: File has support for st_mtime. File will not be read if stat
-       shows it's has not been updated. If not combined with TRIGGER,
-       output always falls back on #9 (TBD - not implemented yet)
 
-    5: NO_REWIND: File that has OPENCLOSE unset can stay open between events
-       to optimize sample harvest. However, some files might never the less
-       need to be rewind (i.e. lseek(fd, 0 SEEK_SET)) before willing to give
-       updated data. This applies to most files under sysfs but not
-       /sys/kernel/debug. IOW it's a safe setting for most files to let
-       NO_REWIND be unset if OPENCLOSE is also set, except for debugfs.
+erase
+-----
 
-       Technical background: Rewinding with lseek is used as a way to detect
-       if a file still exists for a certain inode (NO_SIG detection) which
-       is of particular interest for files under sysfs depending on the
-       plug-in HW framework but could also affect user-files who's
-       existence depends on netlink.
+Usage: `erase <offset> <count>`
 
-    8-11 THREAD_OPTION:
-       This is a field of several bits representing a value (0-15), i.e. the
-       third nibble counting from right in HEX. Value represent various
-       sampling alternatives concerning how to sample. There is no strict
-       definition concerning higher vs. lower values, but as a rule of
-       thumb: lower values mean less threading optimizing, higher means more
-       threading optimization. I.e. a low value will thread every single
-       detail (work-task), whereas a higher try various strategies not to
-       thread.
+Erase specified erase blocks SPI flash.
 
-       Values:
+ * `<offset>` - Erase block offset
+ * `<count>` - Number of erase blocks to erase
 
-         0:  THREAD_ALL: Always thread everything. This is the default, but
-             it might be costly.
 
-         1:  NO_SUB_THREADS: Try to optimize not to thread subsignals. Some
-             signals have many sub-signal definitions. For example: each
-             CPU-counter in file /proc/sys have 10 sub-signals. On a 8-core
-             target that means 9x10=90 threads. This creates a non
-             negligible and hard to motivate temporal overhead on Linux
-             (depending on the task type). This FOPS-bit tries to optimize
-             signal-harvest to use only one thread per signal. It is a
-             recommendation only and it's not the engine that decides. The
-             work-tasks do this. It should work as intended for most
-             work-types, but it's always a safe option as it will always
-             fall back to THREAD_ALL if work-task don't have built in
-             support for this optimizing option.
+flash_backup
+------------
 
-        2:  NEVER_SUB_THREAD:  This is a harder optimization variant of
-            NO_SUB_THREADS. This option ignores whether a work-task has
-            built-in support for this optimization not to thread. It tells
-            the _engine_ not to thread, i.e. the work-task never gets a
-            chance to decide. The benefit is that threads need not be
-            started to find out (which has a certain start/set-up cost) but
-            the drawback is that it's not guaranteed to work. I.e. the user
-            needs to know what works and what doesn't. If uncertain, don't
-            use this mode (or try and find out).
+Usage: `flash_backup <file> (<type> | <address> <length>)`
 
-        3-14: TBD
+Back up flash data to the specified file. This command takes either two or
+four arguments. The two-argument invocation is generally recommended for
+non-development use.
 
-        15: SINGLE_THREADING: (RESERVED. Not implemented yet - TBD). All
-            sampling overall is done in a single threaded. This mode of
-            operation is primarily a check-mode as the fully single-thread mode
-            affects SAMPLER overall, and these modes define how sampling
-            should operate.  There might be several ways of single threading
-            however and this bit might be used to let the engine know if it
-            can group together this signal in a bunch of work-tasks or not.
+Parameters:
 
-   12-20 PRIORITY:
-       This is a field of several bits representing a value (0-15), i.e. the
-       forth nibble counting from right in HEX. Value represent priority for
-       the signal. I.e. in which order to harvest a sample. This is useful
-       if there are interdependencies between signals which post-process
-       tools require to be able to compose virtual signal (i.e. signals
-       which don't exist "as is" in the system but are reconstructed on host
-       side).
+ * `<type>` - Type of backup.
 
-       Be very careful when deploying this feature without the aid of
-       management tools (sampler-manager). If uncertain, leave unset. If
-       deployed, the thread running this task (i.e. collecting the signal)
-       will leave default scheduling principle (i.e.  SCHED_NORM on Linux)
-       and enter SCHED_FIFO/SCHED_RR. First of all: this requires root
-       privileges which you might not have. Second: Be
-       aware of that all SCHED_FIFO/SCHED_RR are run *before* SCHED_NORM no
-       matter priority level (SHED_NORM is what most processes run under,
-       including any window manager or console/terminal). I.e. "priority"
-       has a completely different meaning in the various domains and if if
-       sampler is run to fast it might starve the target so badly it first
-       of all affect the measurement, or in worst case disable you from even
-       killing a rouge sampling process. There are ways to moderate this
-	   risk, see the following article for leads:
-	   http://lwn.net/Articles/296419/
+    This selects the appropriate address and length values based upon the
+    selected type.
 
-       PRIORITY is a feature which requires threading, i.e. THREAD_OPTION no
-       higher than 2. It decouples otherwise necessity to specify signals in
-       a certain order in sampler-editor. I.e. user who change definition of
-       virtual signals need not bother how to schedule the harvest,
-       sampler-editor will in each chain of dependencies figure that out and
-       automatically set the signal with the longest chain of dependencies
-       the highest priority. Note that there could be several independent
-       chains running concurrently which is why the number of priority
-       levels are relatively few. I.e. the longest chain of dependency is 16
-       levels deep.
+    Valid options are:
 
-   31: ALWAYS: assert file or signal existence. I.e. framework assumes there
-	   always exists a file and in that file a valid content according to
-	   the selection methods (i.e. line and value regular expressions if
-	   used). Operation fail in runtime if above conditions are not
-	   fulfilled, which should occur immediately on start. This mode is
-	   recommended initially when defining new signals and if not certain on
-	   selection regex:s or if OPENCLOSE is not set for files in sysfs that
-	   can come and go depending on the HW plug-in framework.
-	   cpu-up/cpu-down affected files would be a typical example when you
-	   would like to have this enabled.  If uncertain, always set if
-	   OPENCLOSE is unset.
+    ------------------------------------------------------------------
+         Option Description
+    ----------- ------------------------------------------------------
+    `cal`       Calibration data
 
-5 Regex identifying line to parse.
------------------------------------
-  Can be NULL, which means don't scan, use complete file as data (usually
-  one liner data-files which is quite common in sysfs)
+    `fw`        Firmware
 
-  Regex follow extended regex format. If escape characters are needed, no
-  need to escape the escape (reg-exp text is read as is). Regex can contain
-  sub-expressions, but no special care is taken about these. Match applies
-  to the complete line or not at all.
+    `fpga40`    Metadata and bitstream for 40 kLE FPGA
 
-  Scanning file continues until first match our until the match number
-  given in #6.. If regex would match more than one line, only the first
-  line or the one specified is considered for #7.
+    `fpga115`   Metadata and bitstream for 115 kLE FPGA
+    ------------------------------------------------------------------
 
-6 Line count match
-------------------
-  When parsing more complex files, #5 can give multiple hits. Consider for
-  example /proc/cpuinfo. This field, if given, must contain an integer
-  specifying which hit counting from top for which further data extraction
-  by #7 applies to. If left empty it defaults to the first hit, unless both
-  #5 and #6 are left empty, in  which has it has the special meaning that
-  data is not considered for extraction line by line, but instead the whole
-  file is considered. In which case regex anchors '^' and '$' loose their
-  meaning, but is a quite common case in sysfs were a most files contain
-  only value entry (i.e. #5-#8 are empty). There could however exist cases
-  when parsing complex files where everything has to be done by one regex
-  only. One such case would be parsing accumulative log-files.
+ * `<address>` - Address of data to back up. Must be erase block-aligned.
+ * `<len>` - Length of region to back up. Must be erase block-aligned.
 
-7 Signal regex
----------------
-  NULL means don't parse, use complete line as is.
+Note: When an address and length are provided, the image type will default
+to `raw`.
 
-  Regex follow extended regex format. If escape characters are needed, no
-  need to escape the escape (reg-exp text is read as is). Regex can
-  contain sub-expressions, in which case #7 is needed.
+Examples:
 
-8 Sub-match index
------------------
-  Sub-match index, or list of index, represents data. If 0 or NULL,
-  complete match is used, in which case #6 is pointless as it means the
-  same as using the whole line and #5 alone defines which.
+ * `flash_backup cal.bin cal`
 
-  Having any value here without any signal regex defined, or if any index
-  is larger than the largest sub-expression number in #6 would be an
-  error.
+    Backs up the calibration data region.
 
-  NOTE: Errors are not detected until runtime! It's a good idea to test
-  your regex strings against known patterns before running them on target.
+ * `flash_backup cal_raw.bin 0x30000 0x10000`
 
-  If #6 contain sub-expressions this field contain which sub-expression
-  contain data. Field is either an integer number, or a list of integer
-  numbers.
+    Backs up the calibration region as a raw data image.
 
-  If field contain more than one sub-expression which with data, output
-  will contain all subexpressions mentioned here, in the same order as
-  mentioned an separated by the normal delimiter used as if it would be
-  several separate signals. Signal-name outputted in the legend will be
-  suffixed with an index corresponding.
 
-  For a more specif signal name, two separate signals need be defined
-  parsing the same file and same line need be defined.
+flash_image
+-----------
 
-9 On no update (NUCE)
----------------------------
-  This is a code (i.e. value, not bit-field) specifying what to output if
-  during run no update has occurred for this signal
+Usage: `flash_image <image> [output options]`
 
-  0: Nothing. Output is an EMPTY field. Unfortunately this will confuse
-     feedgnuplot and drivegnuplot, therefor please avoid.
+Print a flash image's metadata or create a new flash image. When provided
+with the name of a flash image file as the only argument, this command will
+print the metadata contents of the image.
 
-  1: Last value (default). This setting is useful for events representing
-     states.
+The following options may be used to create a new flash image.
 
-  2: Per signal defined "dead-signal" value. A specific value can be
-     defined per each main signal. This is useful if many signals come and
-     go and one wants to distinguish one dead signal from the other. Note
-     that this is a string. I.e. output can be both numerical or textual. It
-     currently defaults to the name of the signal suffixed with "_DEAD"
+ * `data=<file>`
 
-  3: Output per sample pre-set "signal dead-value". It defaults to a define
-     used in the code and can be overloaded during build-time. This is
-     Oscilloscope analogy for a dead or unconnected signal. By combining
-     this with #A below, one can make sampler generate magic values useful
-     for plotting discontinuous graphs (needs post-processing and usage off
-     --dump flag for feedgnuplot).
+    File to containing data to store in the image.
 
-  As no updates can be an indication of error in either the framework or
-  the signal definition, two methods for setting pre-set values can
-  be used.
+ * `address=<addr>`
 
- A: Output pre-set signal value via command line. This is a value passed
-    on command line for each signal.
+    Flash address. The default depends upon `type` parameter.
 
- B: Output pre-set sample value. This is a hard-coded value defined during
-    build time using -DSMPL_FALLBACK_VAL=<val>. If not set, it defaults to
-    0xC0DEDEAD.
+ * `type=<type>`
 
+    Type of flash image. Defaults to `raw`.
+
+    Valid options are:
+
+    ------------------------------------------------------------------
+         Option Description
+    ----------- ------------------------------------------------------
+    `cal`       Calibration data
+
+    `fw`        Firmware
+
+    `fpga40`    Metadata and bitstream for 40 kLE FPGA
+
+    `fpga115`   Metadata and bitstream for 115 kLE FPGA
+
+    `raw`       Raw data. The address and length parameters must be
+                provided if this type is selected.
+    ------------------------------------------------------------------
+
+ * `serial=<serial>`
+
+    Serial # to store in image. Defaults to zeros.
+
+
+flash_init_cal
+--------------
+
+Usage: `flash_init_cal <fpga_size> <vctcxo_trim> [<output_file>]`
+
+Create and write a new calibration data region to the currently opened
+device, or to a file. Be sure to back up calibration data prior to running
+this command. (See the `flash_backup` command.)
+
+ * `<fpga_size>`
+
+    Either 40 or 115, depending on the device model.
+
+ * `<vctcxo_trim>`
+
+    VCTCXO/DAC trim value (`0x0`-`0xffff`)
+
+ * `<output_file>`
+
+    File to write calibration data to. When this argument is provided, no
+    data will be written to the device's flash.
+
+
+flash_restore
+-------------
+
+Usage: `flash_restore <file> [<address> <length>]`
+
+Restore flash data from a file, optionally overriding values in the image
+metadata.
+
+ * `<address>`
+
+    Defaults to the address specified in the provided flash image file.
+
+ * `<length>`
+
+    Defaults to length of the data in the provided image file.
+
+
+help
+----
+
+Usage: `help [<command>]`
+
+Provides extended help, like this, on any command.
+
+
+info
+----
+
+Usage: `info`
+
+Prints the following information about an opened device:
+
+ * Serial number
+ * VCTCXO DAC calibration value
+ * FPGA size
+ * Whether or not the FPGA is loaded
+ * USB bus, address, and speed
+ * Backend (Denotes which device interface code is being used.)
+ * Instance number
+
+
+jump_to_boot
+------------
+
+Usage: `jump_to_boot`
+
+Jumps to the FX3 bootloader.
+
+
+load
+----
+
+Usage: `load <fpga|fx3> <filename>`
+
+Load an FPGA bitstream or program the FX3's SPI flash.
+
+
+xb
+--
+
+Usage: `xb <board_model> <subcommand> [parameters]`
+
+Enable or configure an expansion board.
+
+Valid values for `board_model`:
+
+  - `100`
+
+      XB-100 GPIO expansion board.
+
+  - `200`
+
+      XB-200 LF/MF/HF/VHF transverter expansion board
+
+Valid subcommands:
+
+  - `enable <board_model>`
+
+      Enable the XB-100 or XB-200 expansion board.
+
+  - `filter 200 [rx|tx] [50|144|222|custom|auto_1db|auto_3db]`
+
+      Selects the specified RX or TX filter on the XB-200 board. Below
+      are descriptions of each of the filter options.
+
+      * 50
+
+            Selects the 50-54 MHz (6 meter band) filter
+
+      * 144
+
+            Selects the 144-148 MHz (2 meter band) filter
+
+      * 222
+
+            Selects 222-225 MHz (1.25 meter band) filter. Realistically,
+            this filter option is actually slightly wider, covering
+            206 MHz - 235 MHz.
+
+      * custom
+
+            Selects the custom filter path. The user should connect a filter
+            along the corresponding FILT and FILT-ANT connections when using
+            this option.  Alternatively one may jumper the FILT and FILT-ANT
+            connections to achieve "no filter" for reception. (However, this is
+            _highly_ discouraged for transmissions.)
+
+      * auto_1db
+
+            Automatically selects one of the above choices based upon frequency
+            and the filters' 1dB points. The custom path is used for cases
+            that are not associated with the on-board filters.
+
+      * auto_3db
+
+            Automatically selects one of the above choices based upon frequency
+            and the filters' 3dB points. The custom path is used for cases
+            that are not associated with the on-board filters.
+
+Examples:
+
+ * `xb 100 enable`
+
+      Enables the XB-100 GPIO expansion board.
+
+ * `xb 200 filter rx 144`
+
+      Selects the 144-148 MHz receive filter on the XB-200 expansion board.
+
+
+mimo
+----
+
+Usage: `mimo [master | slave]`
+
+Modify device MIMO operation.
+
+
+open
+----
+
+Usage: `open [device identifiers]`
+
+Open the specified device for use with successive commands. Any previously
+opened device will be closed.
+
+The general form of the device identifier string is:
+
+`<backend>:[device=<bus>:<addr>] [instance=<n>] [serial=<serial>]`
+
+See the `bladerf_open()` documentation in libbladeRF for the complete
+device specifier format.
+
+
+peek
+----
+
+Usage: `peek <dac|lms|si> <address> [num_addresses]`
+
+The peek command can read any of the devices hanging off the FPGA which
+includes the LMS6002D transceiver, VCTCXO trim DAC or the Si5338 clock
+generator chip.
+
+If `num_addresses` is supplied, the address is incremented by 1 and
+another peek is performed for that many addresses.
+
+Valid Address Ranges:
+
+     Device Address Range
+----------- ----------------
+`dac`       0 to 255
+`lms`       0 to 127
+`si`        0 to 255
+
+Example:
+
+ * `peek si ...`
+
+
+poke
+----
+
+Usage: `poke <dac|lms|si> <address> <data>`
+
+The poke command can write any of the devices hanging off the FPGA which
+includes the LMS6002D transceiver, VCTCXO trim DAC or the Si5338 clock
+generator chip.
+
+Valid Address Ranges:
+
+     Device Address Range
+----------- ----------------
+`dac`       0 to 255
+`lms`       0 to 127
+`si`        0 to 255
+
+Example:
+
+ * `poke lms ...`
+
+
+print
+-----
+
+Usage: `print <param>`
+
+The print command takes a parameter to print.  The parameter is one of:
+
+----------------------------------------------------------------------
+    Parameter Description
+------------- --------------------------------------------------------
+`bandwidth`   Bandwidth settings
+
+`frequency`   Frequency settings
+
+`gpio`        FX3 <-> FPGA GPIO state
+
+`loopback`    Loopback settings
+
+`lnagain`     Gain setting of the LNA, in dB
+
+`rxvga1`      Gain setting of RXVGA1, in dB
+
+`rxvga2`      Gain setting of RXVGA2, in dB
+
+`txvga1`      Gain setting of TXVGA1, in dB
+
+`txvga2`      Gain setting of TXVGA2, in dB
+
+`sampling`    External or internal sampling mode
+
+`samplerate`  Samplerate settings
+
+`trimdac`     VCTCXO Trim DAC settings
+----------------------------------------------------------------------
+
+
+probe
+-----
+
+Usage: `probe [strict]`
+
+Search for attached bladeRF device and print a list of results.
+
+Without specifying `strict`, the lack of any available devices is not considered
+an error.
+
+When provided the optional `strict` argument, this command will treat the
+situation where no devices are found as an error, causing scripts or
+lists of commands provided via the `-e` command line argument to terminate
+immediately.
+
+
+quit
+----
+
+Usage: `quit`
+
+Exit the CLI.
+
+
+recover
+-------
+
+Usage: `recover [<bus> <address> <firmware file>]`
+
+Load firmware onto a device running in bootloader mode, or list all devices
+currently in bootloader mode.
+
+With no arguments, this command lists the USB bus and address for FX3-based
+devices running in bootloader mode.
+
+When provided a bus, address, and path to a firmware file, the specified
+device will be loaded with and begin executing the provided firmware.
+
+In most cases, after successfully loading firmware into the device's RAM,
+users should open the device with the "`open`" command, and write the
+firmware to flash via "`load fx3 <firmware file>`"
+
+
+run
+---
+
+Usage: `run <script>`
+
+Run the provided script.
+
+
+rx
+--
+
+Usage: `rx <start | stop | wait | config [param=val [param=val [...]]>`
+
+Receive IQ samples and write them to the specified file. Reception is
+controlled and configured by one of the following:
+
+----------------------------------------------------------------------
+    Command Description
+----------- ----------------------------------------------------------
+`start`     Start receiving samples
+
+`stop`      Stop receiving samples
+
+`wait`      Wait for sample transmission to complete, or until a
+            specified amount of time elapses
+
+`config`    Configure sample reception. If no parameters are
+            provided, the current parameters are printed.
+----------------------------------------------------------------------
+
+Running `rx` without any additional commands is valid shorthand for
+`rx config`.
+
+The `wait` command takes an optional `timeout` parameter. This parameter
+defaults to units of milliseconds (`ms`). The timeout unit may be specified
+using the `ms` or `s` suffixes. If this parameter is not provided, the
+command will wait until the reception completes or `Ctrl-C` is pressed.
+
+Configuration parameters take the form `param=value`, and may be specified
+in a single or multiple `rx config` invocations. Below is a list of
+available parameters.
+
+----------------------------------------------------------------------
+      Parameter Description
+--------------- ------------------------------------------------------
+`n`             Number of samples to receive. 0 = inf.
+
+`file`          Filename to write received samples to
+
+`format`        Output file format. One of the following:
+
+                `csv`: CSV of SC16 Q11 samples
+
+                `bin`: Raw SC16 Q11 DAC samples
+
+`samples`       Number of samples per buffer to use in the
+                asynchronous stream.  Must be divisible by 1024 and
+                >= 1024.
+
+`buffers`       Number of sample buffers to use in the asynchronous
+                stream. The min value is 4.
+
+`xfers`         Number of simultaneous transfers to allow the
+                asynchronous stream to use. This should be less than
+                the `buffers` parameter.
+
+`timeout`       Data stream timeout. With no suffix, the default
+                unit is `ms`. The default value is 1000 ms (1 s).
+                Valid suffixes are `ms` and `s`.
+----------------------------------------------------------------------
+
+Example:
+
+ * `rx config file=/tmp/data.bin format=bin n=10K`
+
+    Receive (10240 = 10 * 1024) samples, writing them to `/tmp/data.bin` in
+    the binary DAC format.
+
+Notes:
+
+ * The `n`, `samples`, `buffers`, and `xfers` parameters support the
+   suffixes `K`, `M`, and `G`, which are multiples of 1024.
+ * An `rx stop` followed by an `rx start` will result in the samples
+   file being truncated. If this is not desired, be sure to run
+   `rx config` to set another file before restarting the rx stream.
+ * For higher sample rates, it is advised that the `bin`ary output format be
+   used, and the output file be written to RAM (e.g. `/tmp`, `/dev/shm`), if
+   space allows. For larger captures at higher sample rates, consider using
+   an SSD instead of a HDD.
+
+
+tx
+--
+
+Usage: `tx <start | stop | wait | config [parameters]>`
+
+Read IQ samples from the specified file and transmit them. Transmission is
+controlled and configured by one of the following:
+
+----------------------------------------------------------------------
+    Command Description
+----------- ----------------------------------------------------------
+`start`     Start transmitting samples
+
+`stop`      Stop transmitting samples
+
+`wait`      Wait for sample transmission to complete, or until a
+            specified amount of time elapses
+
+`config`    Configure sample transmission. If no parameters are
+            provided, the current parameters are printed.
+----------------------------------------------------------------------
+
+Running `tx` without any additional commands is valid shorthand for
+`tx config`.
+
+The `wait` command takes an optional `timeout` parameter. This parameter
+defaults to units of milliseconds (`ms`). The timeout unit may be specified
+using the `ms` or `s` suffixes. If this parameter is not provided, the
+command will wait until the transmission completes or `Ctrl-C` is pressed.
+
+Configuration parameters take the form `param=value`, and may be specified
+in a single or multiple `tx config` invocations. Below is a list of
+available parameters.
+
+----------------------------------------------------------------------
+      Parameter Description
+--------------- ------------------------------------------------------
+`file`          Filename to read samples from
+
+`format`        Input file format. One of the following:
+
+                `csv`: CSV of SC16 Q11 samples ([-2048, 2047])
+
+                `bin`: Raw SC16 Q11 DAC samples ([-2048, 2047])
+
+`repeat`        The number of times the file contents should be
+                transmitted. 0 implies repeat until stopped.
+
+`delay`         The number of microseconds to delay between
+                retransmitting file contents. 0 implies no delay.
+
+`samples`       Number of samples per buffer to use in the
+                asynchronous stream. Must be divisible by 1024 and
+                >= 1024.
+
+`buffers`       Number of sample buffers to use in the asynchronous
+                stream. The min value is 4.
+
+`xfers`         Number of simultaneous transfers to allow the
+                asynchronous stream to use. This should be < the
+                `buffers` parameter.
+
+`timeout`       Data stream timeout. With no suffix, the default
+                unit is ms. The default value is 1000 ms (1 s).
+                Valid suffixes are 'ms' and 's'.
+----------------------------------------------------------------------
+
+Example:
+
+ * `tx config file=data.bin format=bin repeat=2 delay=250000`
+
+    Transmitting the contents of `data.bin` two times, with a ~250ms delay
+    between transmissions.
+
+Notes:
+
+ * The `n`, `samples`, `buffers`, and `xfers` parameters support the
+   suffixes `K`, `M`, and `G`, which are multiples of 1024.
+ * For higher sample rates, it is advised that the input file be
+   stored in RAM (e.g. `/tmp`, `/dev/shm`) or on an SSD, rather than a
+   HDD.
+ * When providing CSV data, this command will first convert it to a
+   binary format, stored in a file in the current working directory.
+   During this process, out-of-range values will be clamped.
+ * When using a binary format, the user is responsible for ensuring
+   that the provided data values are within the allowed range. This
+   prerequisite alleviates the need for this program to perform range
+   checks in time-sensitive callbacks.
+
+
+set
+---
+
+Usage: `set <param> <arguments>`
+
+The set command takes a parameter and an arbitrary number of arguments for
+that particular command.  The parameter is one of:
+
+----------------------------------------------------------------------
+    Parameter Description
+------------- --------------------------------------------------------
+`bandwidth`   Bandwidth settings
+
+`frequency`   Frequency settings
+
+`gpio`        FX3 <-> FPGA GPIO state
+
+`loopback`    Loopback settings. Run 'set loopback' for available modes.
+
+`lnagain`     Gain setting of the LNA, in dB. Valid values: 0, 3, 6
+
+`rxvga1`      Gain setting of RXVGA1, in dB. Range: [5, 30]
+
+`rxvga2`      Gain setting of RXVGA2, in dB. Range: [0, 30]
+
+`txvga1`      Gain setting of TXVGA1, in dB. Range: [-35, -4]
+
+`txvga2`      Gain setting of TXVGA2, in dB. Range: [0, 25]
+
+`sampling`    External or internal sampling mode
+
+`samplerate`  Samplerate settings
+
+`trimdac`     VCTCXO Trim DAC settings
+----------------------------------------------------------------------
+
+
+version
+-------
+
+Usage: `version`
+
+Prints version information for host software and the current device.
